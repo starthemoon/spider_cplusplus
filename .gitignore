@@ -1,9 +1,13 @@
 #忽略编辑器配置目录
 /.idea
 /.vscode
-#忽略 *temp* 和 my* 文件
+#忽略 src目录下的 *temp*、 my* 和 asio 教程文件
 *temp*
 my*
+src/async_daytime_server.cpp
+src/async_timer.cpp
+src/sync_daytime_server.cpp
+src/tcp_client.cpp
 # 忽略 bin 和 obj
 bin/
 obj/
