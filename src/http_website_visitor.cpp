@@ -6,6 +6,9 @@
 // ssl for https, using openssl
 #include <asio/ssl.hpp>
 
+// file stream
+#include <fstream>
+
 #define HTTPPORT "80"
 #define HTTPSPORT "443"
 
@@ -39,6 +42,7 @@ void handleHTTPSRequestAndResponse(io_context &ic, asio::ip::basic_resolver_resu
         throw asio::system_error(ec);
     }
 
+    // C style ssl connection
     // 建立socket
     // #include <openssl/ssl.h>
     // #include <openssl/err.h>
@@ -139,6 +143,7 @@ void handleHTTPRequestAndResponse(tcp::socket &sock, asio::ip::basic_resolver_re
     if (ec != asio::error::eof) {
         throw asio::system_error(ec);
     }
+    
     // asio::read_until(sock, response, "\r\n");
     // string httpVersion;
     // responseStream >> httpVersion;
@@ -170,6 +175,57 @@ void handleHTTPRequestAndResponse(tcp::socket &sock, asio::ip::basic_resolver_re
     // }
     // cout << endl;
 }
+
+// old version
+// int main(int argc, char ** argv) {
+//     try {
+//         if (argc != 4) {
+//             cerr << "Usage: website_visiter <host> <path>" << endl;
+//             return 1;
+//         } else if (!isHostValid(argv[1])) {
+//             cerr << "host must be like \"abc.def.ghi\"" << endl;
+//             return 2;
+//         } else if (!isPathValid(argv[2])) {
+//             cerr << "path must be like \"/a/b/c/d\"" << endl;
+//             return 3;
+//         } else if (!isProtocolChoiceValid(argv[3])) {
+//             cerr << "protocol must be \"1\" or \"0\"" << endl;
+//         }
+//         string host(argv[1]), path(argv[2]), choice(argv[3]);
+//         string port = choice == "0" ? HTTPPORT : HTTPSPORT;
+
+//         io_context ic;
+//         tcp::resolver resolver(ic);
+//         asio::ip::basic_resolver_results endpoints = resolver.resolve(host, port);
+
+//         tcp::socket sock(ic);
+//         asio::error_code ec;
+
+//         // write http request
+//         asio::streambuf request, response;
+//         std::ostream requestStream(&request);
+//         requestStream << "GET " << path << " HTTP/1.1\r\n";
+//         requestStream << "Host: " << host << "\r\n";
+//         requestStream << "Accept: */*\r\n";
+//         requestStream << "Connection: close\r\n\r\n";
+
+//         // 1. send request and read response using tcp socket only
+//         if (choice == "0") {
+//             handleHTTPRequestAndResponse(sock, endpoints, request, response);
+//         }
+//         // 2. send request and read response using SSL
+//         else {
+//             handleHTTPSRequestAndResponse(ic, endpoints, request, response);
+//         }
+
+//         // print response
+//         cout << &response << endl;
+//     } catch (exception & e) {
+//         cerr << e.what() << endl;
+//         return 10;
+//     }
+//     return 0;
+// }
 
 bool isProtocolChoiceValid(char *choice) {
     return *(choice + 1) == '\0' && (*choice == '1' || *choice == '0');
@@ -235,26 +291,172 @@ bool isHostValid(char *host) {
 }
 
 class Visitor {
+private:
+    const string HTTPSERVICE = "http";
+    const string HTTPSSERVICE = "https";
+    const string VHTTPPORT = "80";
+    const string VHTTPSPORT = "443";
+    const uint HTTPOK = 200;
+    const string tempFileName = "temp.html";
 public:
-    Visitor(string h, string pa, string po): host(h), path(pa), port(po) {
-        // TODO: resolve, connect, send, read
+    Visitor(io_context &ic_, string h, string pa): ic(ic_), host(h), path(pa), port(VHTTPPORT), service(HTTPSERVICE),
+        resolver(ic), sock(ic), sslContext(asio::ssl::context::sslv23_client), sslStream(ic, sslContext) { }
+
+    void start() {
+        std::cout << "visit " << host << " with service " << service << endl;
+        resolve();
     }
 
 private:
-    asio::ip::basic_resolver_results<tcp> resolve() {
-        tcp::resolver resolver(ic);
-        asio::ip::basic_resolver_results<tcp> endpoints = resolver.resolve(host, port);
-        return endpoints;
+    void resolve() {
+        tcp::resolver::query q(host, service);
+        resolver.async_resolve(q, boost::bind(
+            &Visitor::handleResolve, this, boost::placeholders::_1, boost::placeholders::_2)
+        );
     }
 
-    string host, path, port;
-    io_context ic;
+    void handleResolve(const asio::error_code &ec, tcp::resolver::results_type results) {
+        if (!ec) {
+            endpoints = results;
+            connect();
+        } else {
+            cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
+        }
+    }
+
+    void connect() {
+        if (service == HTTPSERVICE) {
+            asio::async_connect(sock, endpoints, boost::bind(
+                &Visitor::handleConnect, this, boost::placeholders::_1, boost::placeholders::_2)
+            );
+        } else {
+            asio::async_connect(sslStream.lowest_layer(), endpoints, boost::bind(
+                &Visitor::handleSSLConnectPart1, this, boost::placeholders::_1, boost::placeholders::_2)
+            );
+        }
+    }
+
+    void handleSSLConnectPart1(const asio::error_code &ec, const tcp::endpoint &endpoint) {
+        if (!ec) {
+            sslStream.handshake(asio::ssl::stream_base::client);
+            sendData();
+        } else {
+            cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
+        }
+    }
+    
+    void handleConnect(const asio::error_code &ec, const tcp::endpoint &endpoint) {
+        if (!ec) sendData();
+        else cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
+    }
+
+    void sendData() {
+        asio::streambuf request;
+        std::ostream requestStream(&request);
+        requestStream << "GET " << path << " HTTP/1.1\r\n";
+        requestStream << "Host: " << host << "\r\n";
+        requestStream << "Accept: */*\r\n";
+        requestStream << "Connection: close\r\n\r\n";
+        if (service == HTTPSERVICE) {
+            asio::async_write(sock, request, boost::bind(
+                &Visitor::handleSendCompleted, this, boost::placeholders::_1, boost::placeholders::_2)
+            );
+        } else {
+            asio::async_write(sslStream, request, boost::bind(
+                &Visitor::handleSendCompleted, this, boost::placeholders::_1, boost::placeholders::_2)
+            );
+        }
+    }
+
+    void handleSendCompleted(const asio::error_code& ec, std::size_t bytes_transferred) {
+        if (!ec) recvData();
+        else cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
+    }
+
+    void recvData() {
+        if (service == HTTPSERVICE) {
+            asio::async_read(sock, response, boost::bind(
+                &Visitor::handleRecvCompleted, this, boost::placeholders::_1, boost::placeholders::_2)
+            );
+        } else {
+            asio::async_read(sslStream, response, boost::bind(
+                &Visitor::handleRecvCompleted, this, boost::placeholders::_1, boost::placeholders::_2)
+            );
+        }
+    }
+
+    void handleRecvCompleted(const asio::error_code& ec, std::size_t bytes_transferred) {
+        if (!ec || ec == asio::error::eof) {
+            uint statusCode;
+            string httpVersion, statusMessage, data;
+            std::istream responseStream(&response);
+
+            auto t = response.data();
+            data = string((char*)t.data());
+            storeToTempHTMLFile(data);
+
+            responseStream >> httpVersion;
+            responseStream >> statusCode;
+            responseStream >> statusMessage;
+
+            if (statusCode != HTTPOK) {
+                cerr << "status code: " << statusCode << endl;
+                response.consume(response.size());
+                changePort();
+                start();
+                return;
+            }
+
+            while (getline(responseStream, data) && data[0] != '<');
+            
+            if (data.empty() || data[0] != '<') {
+                cerr << "data format is wrong" << endl << data << endl;
+                throw exception();
+            }
+
+            storeToTempHTMLFile(data);
+        } else {
+            cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
+        }
+    }
+
+    void changePort() {
+        if (service == HTTPSERVICE) {
+            service = HTTPSSERVICE;
+            std::cout << "change service from http to https" << std::endl;
+        } else {
+            cerr << "Neither http or https connection can be established!" << endl;
+            throw exception();
+        }
+    }
+
+    void storeToTempHTMLFile(string & data) {
+        std::cout << "enter storeToTempHTMLFile" << std::endl;
+        std::fstream fs;
+        fs.open(tempFileName, std::ios::out);
+        fs << data;
+        fs.close();
+    }
+
+    string host, path, port, service;
+    io_context & ic;
+    asio::error_code ec;
+    asio::ip::basic_resolver_results<tcp> endpoints;
+    // response
+    asio::streambuf response;
+    // resolver
+    tcp::resolver resolver;
+    // tcp socket
+    tcp::socket sock;
+    // ssl
+    asio::ssl::context sslContext;
+    asio::ssl::stream<tcp::socket> sslStream;
 };
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     try {
-        if (argc != 4) {
-            cerr << "Usage: website_visiter <host> <path> <protocol>[0|1]" << endl;
+        if (argc != 3) {
+            cerr << "Usage: website_visiter <host> <path>" << endl;
             return 1;
         } else if (!isHostValid(argv[1])) {
             cerr << "host must be like \"abc.def.ghi\"" << endl;
@@ -262,41 +464,14 @@ int main(int argc, char ** argv) {
         } else if (!isPathValid(argv[2])) {
             cerr << "path must be like \"/a/b/c/d\"" << endl;
             return 3;
-        } else if (!isProtocolChoiceValid(argv[3])) {
-            cerr << "protocol must be \"1\" or \"0\"" << endl;
         }
-        string host(argv[1]), path(argv[2]), choice(argv[3]);
-        string port = choice == "0" ? HTTPPORT : HTTPSPORT;
-
+        string host(argv[1]), path(argv[2]);
         io_context ic;
-        tcp::resolver resolver(ic);
-        asio::ip::basic_resolver_results endpoints = resolver.resolve(host, port);
-
-        tcp::socket sock(ic);
-        asio::error_code ec;
-
-        // write http request
-        asio::streambuf request, response;
-        std::ostream requestStream(&request);
-        requestStream << "GET " << path << " HTTP/1.1\r\n";
-        requestStream << "Host: " << host << "\r\n";
-        requestStream << "Accept: */*\r\n";
-        requestStream << "Connection: close\r\n\r\n";
-
-        // 1. send request and read response using tcp socket only
-        if (choice == "0") {
-            handleHTTPRequestAndResponse(sock, endpoints, request, response);
-        }
-        // 2. send request and read response using SSL
-        else {
-            handleHTTPSRequestAndResponse(ic, endpoints, request, response);
-        }
-
-        // print response
-        cout << &response << endl;
-    } catch (exception & e) {
+        auto visitor = Visitor(ic, host, path);
+        visitor.start();
+        std::cout << "number of callback handlers of io context: " << ic.run() << std::endl;
+    } catch (exception &e) {
         cerr << e.what() << endl;
-        return 10;
     }
     return 0;
 }

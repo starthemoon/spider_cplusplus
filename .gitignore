@@ -2,5 +2,8 @@
 /.idea
 /.vscode
 #忽略 *temp* 和 my* 文件
-/src/*temp*
-/src/my*
+*temp*
+my*
+# 忽略 bin 和 obj
+bin/
+obj/
