@@ -260,8 +260,9 @@ bool isPathValid(char *path) {
     if (*path != '/') return false;
     auto paths = splitPathBySlash(path);
     if (paths.size() == 1 && paths[0] == "") return true;
-    for (auto name : paths) {
-        if (name.empty() || !isNameValid(name)) return false;
+    for (int i = 0; i < paths.size(); ++i) {
+        if (!i && (paths[i].empty() || isNameValid(paths[i]))) continue;
+        if (paths[i].empty() || !isNameValid(paths[i])) return false;
     }
     return true;
 }
@@ -297,13 +298,16 @@ private:
     const string VHTTPPORT = "80";
     const string VHTTPSPORT = "443";
     const uint HTTPOK = 200;
+    const uint HTTPREDIRECTPERMANENTLY = 301;
+    const uint HTTPREDIRECTTEMPARATELY = 302;
     const string tempFileName = "temp.html";
 public:
-    Visitor(io_context &ic_, string h, string pa): ic(ic_), host(h), path(pa), port(VHTTPPORT), service(HTTPSERVICE),
+    Visitor(io_context &ic_, string h, string pa): ic(ic_), host(h), path(pa), service(HTTPSERVICE),
         resolver(ic), sock(ic), sslContext(asio::ssl::context::sslv23_client), sslStream(ic, sslContext) { }
 
     void start() {
-        std::cout << "visit " << host << " with service " << service << endl;
+        sslStream = asio::ssl::stream<tcp::socket>(ic, sslContext);
+        std::cout << "visit " << host << path << " with service " << service << endl;
         resolve();
     }
 
@@ -338,8 +342,9 @@ private:
 
     void handleSSLConnectPart1(const asio::error_code &ec, const tcp::endpoint &endpoint) {
         if (!ec) {
-            sslStream.handshake(asio::ssl::stream_base::client);
-            sendData();
+            sslStream.async_handshake(asio::ssl::stream_base::client, boost::bind(
+                &Visitor::handleConnect, this, boost::placeholders::_1, endpoint)
+            );
         } else {
             cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
         }
@@ -374,6 +379,7 @@ private:
     }
 
     void recvData() {
+        response.consume(response.size());
         if (service == HTTPSERVICE) {
             asio::async_read(sock, response, boost::bind(
                 &Visitor::handleRecvCompleted, this, boost::placeholders::_1, boost::placeholders::_2)
@@ -388,29 +394,24 @@ private:
     void handleRecvCompleted(const asio::error_code& ec, std::size_t bytes_transferred) {
         if (!ec || ec == asio::error::eof) {
             uint statusCode;
-            string httpVersion, statusMessage, data;
+            string httpVersion, statusMessage;
+            string data = string((char *)response.data().data());
             std::istream responseStream(&response);
-
-            auto t = response.data();
-            data = string((char*)t.data());
-            storeToTempHTMLFile(data);
 
             responseStream >> httpVersion;
             responseStream >> statusCode;
             responseStream >> statusMessage;
 
-            if (statusCode != HTTPOK) {
-                cerr << "status code: " << statusCode << endl;
-                response.consume(response.size());
-                changePort();
+            if (statusCode == HTTPREDIRECTTEMPARATELY ||
+                statusCode == HTTPREDIRECTPERMANENTLY) {
+                setNewLocation(data);
                 start();
                 return;
             }
 
-            while (getline(responseStream, data) && data[0] != '<');
-            
-            if (data.empty() || data[0] != '<') {
-                cerr << "data format is wrong" << endl << data << endl;
+            if (statusCode != HTTPOK) {
+                cout << data;
+                cerr << "failed with status " << statusCode << ", " << statusMessage << endl;
                 throw exception();
             }
 
@@ -420,25 +421,47 @@ private:
         }
     }
 
-    void changePort() {
-        if (service == HTTPSERVICE) {
-            service = HTTPSSERVICE;
-            std::cout << "change service from http to https" << std::endl;
-        } else {
-            cerr << "Neither http or https connection can be established!" << endl;
+    void setNewLocation(string & data) {
+        auto loc = data.find("Location: ");
+        if (loc == string::npos) {
+            cerr << "cannot find the new location when redirected" << endl;
             throw exception();
         }
+
+        host.clear();
+        for (int i = loc + 10; i < data.size() && data[i] != '\r'; ++i) {
+            host += data[i];
+        }
+        loc = host.find("://");
+        if (loc == string::npos) {
+            cerr << "cannot find the new location when redirected to " << host << endl;
+            throw exception();
+        }
+
+        service = host.substr(0, loc);
+        if (service != HTTPSERVICE && service != HTTPSSERVICE) {
+            cerr << "do not support the service in the new location: " << service << endl;
+            throw exception();
+        }
+        host = host.substr(loc + 3);
+
+        loc = host.find("/");
+        if (loc == string::npos) {
+            cerr << "cannot find the new path in the new location: " << host << endl;
+            throw exception();
+        }
+        path = host.substr(loc);
+        host = host.substr(0, loc);
     }
 
     void storeToTempHTMLFile(string & data) {
-        std::cout << "enter storeToTempHTMLFile" << std::endl;
         std::fstream fs;
         fs.open(tempFileName, std::ios::out);
         fs << data;
         fs.close();
     }
 
-    string host, path, port, service;
+    string host, path, service;
     io_context & ic;
     asio::error_code ec;
     asio::ip::basic_resolver_results<tcp> endpoints;
@@ -469,7 +492,7 @@ int main(int argc, char **argv) {
         io_context ic;
         auto visitor = Visitor(ic, host, path);
         visitor.start();
-        std::cout << "number of callback handlers of io context: " << ic.run() << std::endl;
+        ic.run();
     } catch (exception &e) {
         cerr << e.what() << endl;
     }

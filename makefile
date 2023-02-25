@@ -1,13 +1,13 @@
 export CPLUS_INCLUDE_PATH=/home/starthemoon/star/1tools/c++_lib/boost_1_81_0:/home/starthemoon/star/1tools/c++_lib/asio-1.24.0/include:$(shell printenv CPLUS_INCLUDE_PATH)
-all:clean dev bin/http_website_visitor #bin/tcp_client bin/async_timer #bin/async_daytime_server #bin/sync_daytime_server priviledge
+all:clean dev bin/website_visitor #bin/tcp_client bin/async_timer #bin/async_daytime_server #bin/sync_daytime_server priviledge
 
 priviledge:
 	chmod 777 bin/*
 
-bin/http_website_visitor: obj/http_website_visitor.o
+bin/website_visitor: obj/website_visitor.o
 	g++ -o $@ $< -lcrypto -lssl
 
-obj/http_website_visitor.o: src/http_website_visitor.cpp
+obj/website_visitor.o: src/website_visitor.cpp
 	g++ -c -std=c++20 -g -o $@ $<
 
 bin/async_timer: obj/async_timer.o
