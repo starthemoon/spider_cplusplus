@@ -21,6 +21,9 @@ using std::exception;
 using asio::ip::tcp;
 using asio::io_context;
 
+const string HTTPSERVICE = "http";
+const string HTTPSSERVICE = "https";
+
 void handleHTTPSRequestAndResponse(io_context &ic, asio::ip::basic_resolver_results<tcp> &endpoints,
                                    asio::streambuf &request, asio::streambuf &response) {
     // construct ssl context
@@ -227,8 +230,9 @@ void handleHTTPRequestAndResponse(tcp::socket &sock, asio::ip::basic_resolver_re
 //     return 0;
 // }
 
-bool isProtocolChoiceValid(char *choice) {
-    return *(choice + 1) == '\0' && (*choice == '1' || *choice == '0');
+bool isServiceValid(char *service_) {
+    string service(service_);
+    return service == HTTPSSERVICE || service == HTTPSERVICE;
 }
 
 bool isNameValid(string & name) {
@@ -293,8 +297,6 @@ bool isHostValid(char *host) {
 
 class Visitor {
 private:
-    const string HTTPSERVICE = "http";
-    const string HTTPSSERVICE = "https";
     const string VHTTPPORT = "80";
     const string VHTTPSPORT = "443";
     const uint HTTPOK = 200;
@@ -302,10 +304,13 @@ private:
     const uint HTTPREDIRECTTEMPARATELY = 302;
     const string tempFileName = "temp.html";
 public:
-    Visitor(io_context &ic_, string h, string pa): ic(ic_), host(h), path(pa), service(HTTPSERVICE),
+    Visitor(io_context &ic_, string h, string pa, string s): ic(ic_), host(h), path(pa), service(s),
         resolver(ic), sock(ic), sslContext(asio::ssl::context::sslv23_client), sslStream(ic, sslContext) { }
 
     void start() {
+        // recreate the tcp socket and ssl socket
+        sock = tcp::socket(ic);
+        // sslContext.set_verify_mode(asio::ssl::verify_none);
         sslStream = asio::ssl::stream<tcp::socket>(ic, sslContext);
         std::cout << "visit " << host << path << " with service " << service << endl;
         resolve();
@@ -392,7 +397,7 @@ private:
     }
 
     void handleRecvCompleted(const asio::error_code& ec, std::size_t bytes_transferred) {
-        if (!ec || ec == asio::error::eof) {
+        if (!ec || ec == asio::error::eof || ec == asio::ssl::error::stream_truncated) {
             uint statusCode;
             string httpVersion, statusMessage;
             string data = string((char *)response.data().data());
@@ -416,6 +421,7 @@ private:
             }
 
             storeToTempHTMLFile(data);
+            if (ec) cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
         } else {
             cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
         }
@@ -478,8 +484,8 @@ private:
 
 int main(int argc, char **argv) {
     try {
-        if (argc != 3) {
-            cerr << "Usage: website_visiter <host> <path>" << endl;
+        if (argc != 3 && argc != 4) {
+            cerr << "Usage: website_visiter <host> <path> [<service>]" << endl;
             return 1;
         } else if (!isHostValid(argv[1])) {
             cerr << "host must be like \"abc.def.ghi\"" << endl;
@@ -487,10 +493,14 @@ int main(int argc, char **argv) {
         } else if (!isPathValid(argv[2])) {
             cerr << "path must be like \"/a/b/c/d\"" << endl;
             return 3;
+        } else if (argc == 4 && !isServiceValid(argv[3])) {
+            cerr << "service must be like \"http\" or \"https\"" << endl;
+            return 3;
         }
-        string host(argv[1]), path(argv[2]);
+        string host(argv[1]), path(argv[2]), service(HTTPSERVICE);
+        if (argc == 4) service = string(argv[3]);
         io_context ic;
-        auto visitor = Visitor(ic, host, path);
+        auto visitor = Visitor(ic, host, path, service);
         visitor.start();
         ic.run();
     } catch (exception &e) {
