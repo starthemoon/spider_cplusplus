@@ -420,8 +420,9 @@ private:
                 throw exception();
             }
 
+            data = data.substr(data.find("\r\n\r\n") + 4);
+
             storeToTempHTMLFile(data);
-            if (ec) cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
         } else {
             cerr << __LINE__ << ": " << ec.value() << ", " << ec.message() << endl;
         }
@@ -503,6 +504,7 @@ int main(int argc, char **argv) {
         auto visitor = Visitor(ic, host, path, service);
         visitor.start();
         ic.run();
+
     } catch (exception &e) {
         cerr << e.what() << endl;
     }
