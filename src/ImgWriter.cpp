@@ -7,7 +7,9 @@ void ImgWriter::start() {
             throw std::exception();
         }
         
+        cout << "start writing img codes to " << _destFileName << "\n";
         ofs.write(_imgCode.c_str(), _imgCode.size());
+        cout << "finish writing img codes to " << _destFileName << "\n";
     } catch (std::exception & e) {
         cerr << e.what() << "\n";
     }

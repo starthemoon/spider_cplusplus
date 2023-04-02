@@ -1,18 +1,21 @@
 #include "inc/ResponseParser.h"
 
-void errWithLocationAndStatusCode(int statusCode, string location) {
-    cerr << __FILE__ << ":" << __LINE__ << ":\tinvalid response wit status code [" << statusCode
-         << "] and Location [" << location << "]\n";
+void errWithLocationAndStatusCode(int statusCode,
+    const string statusMessage, const string location) {
+    cerr << __FILE__ << ":" << __LINE__ << ":\tinvalid response with status code [" << statusCode
+         << "], message [" + statusMessage + "] and Location [" << location << "]\n";
 }
 
-void ResponseParser::parseResponse(string response,
+bool ResponseParser::parseResponse(string response,
     vector<string>& addresses, vector<string>& imgCodes) {
+    // TODO: the second connection often failed with 400
     std::stringstream ss(response);
 
     // get statusCode
     uint statusCode;
     string httpVersion, statusMessage;
-    ss >> httpVersion >> statusCode >> statusMessage;
+    ss >> httpVersion >> statusCode;
+    std::getline(ss, statusMessage, '\r');
 
     // get location in header
     string location;
@@ -27,22 +30,52 @@ void ResponseParser::parseResponse(string response,
         statusCode == HTTPREDIRECTPERMANENTLY) && location.size()) {
         auto lg = lock_guard(_m_address);
         addresses.emplace_back(location);
-        return;
+        return true;
     } else if (statusCode == HTTPOK) {
-        auto suffix = getSuffix(location);
-        if (_imgFormats.count(suffix)) {
-            auto responseBody = response.substr(response.find("\r\n\r\n") + 4);
+        auto content_type = get_content_type(response);
+        auto responseBody = response.substr(response.find("\r\n\r\n") + 4);
+        if (_imgFormats.count(content_type)) {
             auto lg = lock_guard(_m_img);
             imgCodes.emplace_back(responseBody);
-            return;
+            return true;
         } else {
-            // TODO: parse some jpg links in the response body
-            cerr << "Congratulation! Not implement yet\n";
-            throw exception();
-            return;
+            parse_html(responseBody, addresses);
+            return true;
         }
     }
-    errWithLocationAndStatusCode(statusCode, location);
+    errWithLocationAndStatusCode(statusCode, statusMessage, location);
+    return false;
+}
+
+void ResponseParser::parse_html(string responseBody, vector<string>& addresses) {
+    while (responseBody.size()) {
+        int pos1 = responseBody.find("\"");
+        if (pos1 == string::npos) break;
+        int pos2 = responseBody.find("\"", pos1 + 1);
+        if (pos2 == string::npos) break;
+
+        auto location = responseBody.substr(pos1 + 1, pos2 - pos1 - 1);
+        responseBody = responseBody.substr(pos2 + 1);
+
+        if (location.size() < 4 ||
+        (!_imgFormats.count(location.substr(location.size() - 3)) &&
+        !_imgFormats.count(location.substr(location.size() - 4)))) {
+            continue;
+        }
+        if (location.substr(0, 4) != HTTPSERVICE) {
+            if (location.substr(0, 1) != ":") {
+                if (location.substr(0, 2) != "//") {
+                    location = HTTPSERVICE + ":" + "//" + location;
+                } else {
+                    location = HTTPSERVICE + ":" + location;
+                }
+            } else {
+                location = HTTPSERVICE + location;
+            }
+        }
+        auto lg = lock_guard(_m_address);
+        addresses.emplace_back(location);
+    }
 }
 
 namespace test_response_parser {

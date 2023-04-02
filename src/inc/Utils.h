@@ -43,6 +43,7 @@ using std::function;
 using std::bind;
 
 string getSuffix(string);
+string get_content_type(string);
 vector<string> splitSite(string);
 bool isSiteValid(string);
 string trimString(string);

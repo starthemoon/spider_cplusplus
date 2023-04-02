@@ -208,7 +208,7 @@ void handleHTTPRequestAndResponse(tcp::socket &sock, asio::ip::basic_resolver_re
 //     return 0;
 // }
 
-void Visitor::registerResponseParserCallBack(function<void(string)> callback) {
+void Visitor::registerResponseParserCallBack(function<bool(string)> callback) {
     _callback = callback;
 }
 
@@ -303,7 +303,8 @@ void Visitor::recvData() {
 void Visitor::handleRecvCompleted(const asio::error_code& ec, std::size_t bytes_transferred) {
     if (!ec || ec == asio::error::eof || ec == asio::ssl::error::stream_truncated) {
         string data = string((char *)response.data().data());
-        _callback(data);
+        if (!_callback(data))
+        cerr << __FILE__ << ":" << __LINE__ << ":\tvisit " << service + "://" + host + " " + path << " failed" << endl;
     } else {
         cerr << __FILE__ << ":" << __LINE__ << ":\t" << ec.value() << ", " << ec.message() << endl;
     }

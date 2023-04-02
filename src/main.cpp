@@ -18,7 +18,9 @@ void test() {
 
 int main(int argc, char **argv) {
     // test
+#ifdef APP_DEBUG
     test();
+#endif
 
     try {
         if (argc != 2) {
@@ -43,9 +45,10 @@ int main(int argc, char **argv) {
         vector<std::future<void>> iwrs;
 
         auto responseParser = ResponseParser();
-        function<void(string)> rf = std::bind(&ResponseParser::parseResponse,
-            &responseParser, std::placeholders::_1, newAddrs, imgCodes);
+        function<bool(string)> rf = std::bind(&ResponseParser::parseResponse,
+            &responseParser, std::placeholders::_1, std::ref(newAddrs), std::ref(imgCodes));
 
+        bool first = true;
         while (addresses.size()) {
             auto visitors = vector<shared_ptr<Visitor>>(addresses.size());
             for (int i = 0; i < addresses.size(); ++i) {
@@ -53,7 +56,9 @@ int main(int argc, char **argv) {
                 visitors[i]->registerResponseParserCallBack(rf);
                 visitors[i]->start();
             }
+            if (!first) ic.restart();
             ic.run();
+            first = false;
 
             addresses = newAddrs;
             newAddrs.clear();

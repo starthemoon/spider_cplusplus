@@ -37,6 +37,9 @@ public:
         sslStream(ic, sslContext) {
         
         auto data = splitSite(site);
+        if (data.size() < 3) {
+            throw exception();
+        }
 
         service = data[0];
         host = data[1];
@@ -45,7 +48,7 @@ public:
 
     void start();
 
-    void registerResponseParserCallBack(function<void(string)>);
+    void registerResponseParserCallBack(function<bool(string)>);
 
 private:
     void resolve();
@@ -74,7 +77,7 @@ private:
     asio::ip::basic_resolver_results<tcp> endpoints;
     // response
     asio::streambuf response;
-    function<void(string)> _callback;
+    function<bool(string)> _callback;
     // resolver
     tcp::resolver resolver;
     // tcp socket
