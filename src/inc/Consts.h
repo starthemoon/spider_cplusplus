@@ -29,4 +29,6 @@ const string JPEGFORMAT = "jpeg";
 const string PNGFORMAT = "png";
 const string GIFFORMAT = "gif";
 
+const string IMGPATHPREFIX = "./imgs/";
+
 #endif // Consts.h

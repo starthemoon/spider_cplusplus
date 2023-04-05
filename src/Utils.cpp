@@ -50,7 +50,7 @@ vector<string> splitSite(string site) {
         host = site.substr(hostStart);
     }
 
-    auto path = hostEnd == string::npos ? "/" : site.substr(hostEnd + 1);
+    auto path = hostEnd == string::npos ? "/" : site.substr(hostEnd);
     if (path.empty()) path = "/";
 
     return vector<string>{service, host, path};
@@ -67,4 +67,18 @@ string trimString(string s) {
     s.erase(r + 1, s.size());
     s.erase(0, l);
     return s;
+}
+
+string trim_address(const string addr) {
+    int n = addr.size();
+    string new_addr;
+    for (int i = 0; i < n; ++i) {
+        if (addr[i] == '\\' || addr[i] == '\n' || addr[i] == '\r') continue;
+        new_addr += addr[i];
+    }
+    return new_addr;
+}
+
+string add_img_path_prefix(string name) {
+    return IMGPATHPREFIX + name;
 }

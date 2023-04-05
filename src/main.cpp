@@ -16,6 +16,7 @@ void test() {
     testResponseParser();
 }
 
+// TODO: check the valgrind for leak problem
 int main(int argc, char **argv) {
     // test
 #ifdef APP_DEBUG
@@ -42,6 +43,7 @@ int main(int argc, char **argv) {
 
         vector<string> imgCodes;
         int iwi = 0;
+        vector<shared_ptr<ImgWriter>> iws;
         vector<std::future<void>> iwrs;
 
         auto responseParser = ResponseParser();
@@ -63,9 +65,11 @@ int main(int argc, char **argv) {
             addresses = newAddrs;
             newAddrs.clear();
 
-            for (; iwi < imgCodes.size(); ++iwi) {
-                auto iw = ImgWriter(imgCodes[iwi], generateImgName());
-                auto iwr = std::async(&ImgWriter::start, &iw);
+            for (; iwi < imgCodes.size(); iwi += 2) {
+                auto name = generateImgName() + imgCodes[iwi];
+                auto iw = make_shared<ImgWriter>(imgCodes[iwi + 1], name);
+                auto iwr = std::async(&ImgWriter::start, iw.get());
+                iws.emplace_back(iw);
                 iwrs.emplace_back(std::move(iwr));
             }
         }

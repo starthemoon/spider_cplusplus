@@ -8,11 +8,10 @@ void errWithLocationAndStatusCode(int statusCode,
 
 bool ResponseParser::parseResponse(string response,
     vector<string>& addresses, vector<string>& imgCodes) {
-    // TODO: the second connection often failed with 400
     std::stringstream ss(response);
 
     // get statusCode
-    uint statusCode;
+    uint statusCode = 0;
     string httpVersion, statusMessage;
     ss >> httpVersion >> statusCode;
     std::getline(ss, statusMessage, '\r');
@@ -35,8 +34,14 @@ bool ResponseParser::parseResponse(string response,
         auto content_type = get_content_type(response);
         auto responseBody = response.substr(response.find("\r\n\r\n") + 4);
         if (_imgFormats.count(content_type)) {
-            auto lg = lock_guard(_m_img);
-            imgCodes.emplace_back(responseBody);
+            /*
+             * TODO: some may not return the img code, find out why
+             */
+            if (responseBody.size()) {
+                auto lg = lock_guard(_m_img);
+                imgCodes.emplace_back("." + content_type);
+                imgCodes.emplace_back(responseBody);
+            }
             return true;
         } else {
             parse_html(responseBody, addresses);
@@ -48,6 +53,7 @@ bool ResponseParser::parseResponse(string response,
 }
 
 void ResponseParser::parse_html(string responseBody, vector<string>& addresses) {
+    unordered_set<string> addr;
     while (responseBody.size()) {
         int pos1 = responseBody.find("\"");
         if (pos1 == string::npos) break;
@@ -73,8 +79,14 @@ void ResponseParser::parse_html(string responseBody, vector<string>& addresses) 
                 location = HTTPSERVICE + location;
             }
         }
-        auto lg = lock_guard(_m_address);
-        addresses.emplace_back(location);
+
+        location = trim_address(location);
+
+        if (!addr.count(location)) {
+            auto lg = lock_guard(_m_address);
+            addresses.emplace_back(location);
+            addr.insert(location);
+        }
     }
 }
 

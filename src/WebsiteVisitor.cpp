@@ -302,9 +302,10 @@ void Visitor::recvData() {
 
 void Visitor::handleRecvCompleted(const asio::error_code& ec, std::size_t bytes_transferred) {
     if (!ec || ec == asio::error::eof || ec == asio::ssl::error::stream_truncated) {
-        string data = string((char *)response.data().data());
+        auto c = (char *)response.data().data();
+        string data = string(c, c + response.size());
         if (!_callback(data))
-        cerr << __FILE__ << ":" << __LINE__ << ":\tvisit " << service + "://" + host + " " + path << " failed" << endl;
+        cerr << __FILE__ << ":" << __LINE__ << ":\tvisit " << service + "://" + host + path << " failed" << endl;
     } else {
         cerr << __FILE__ << ":" << __LINE__ << ":\t" << ec.value() << ", " << ec.message() << endl;
     }

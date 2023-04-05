@@ -5,7 +5,11 @@ mutex ImgNameGenerator::_m;
 
 string ImgNameGenerator::getTimeStr() {
     auto t = time(nullptr);
-    return ctime(&t);
+    auto e = ctime(&t);
+    string name = ctime(&t);
+    name = trim_address(name);
+    name = add_img_path_prefix(name);
+    return name;
 }
 
 void testImgNameGenerator() {

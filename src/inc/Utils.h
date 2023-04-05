@@ -42,10 +42,17 @@ using std::lock_guard;
 using std::function;
 using std::bind;
 
+// unordered_set
+#include <unordered_set>
+
+using std::unordered_set;
+
 string getSuffix(string);
 string get_content_type(string);
 vector<string> splitSite(string);
 bool isSiteValid(string);
 string trimString(string);
+string trim_address(const string);
+string add_img_path_prefix(string);
 
 #endif // Utils.h
