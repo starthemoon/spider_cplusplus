@@ -25,7 +25,7 @@ bool ResponseParser::parseResponse(string response,
     }
 
     // branches from status code first and then location
-    if ((statusCode == HTTPREDIRECTPERMANENTLY ||
+    if ((statusCode == HTTPREDIRECTTEMPARATELY ||
         statusCode == HTTPREDIRECTPERMANENTLY) && location.size()) {
         auto lg = lock_guard(_m_address);
         addresses.emplace_back(location);
