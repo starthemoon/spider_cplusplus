@@ -11,5 +11,7 @@ src/tcp_client.cpp
 # 忽略 bin 和 obj
 bin/
 obj/
+# 忽略 build
+build/
 # 忽略资源文件
 imgs/
