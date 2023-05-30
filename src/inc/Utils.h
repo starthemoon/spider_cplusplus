@@ -24,6 +24,12 @@ using std::exception;
 // file stream
 #include <fstream>
 
+// file system
+#include <filesystem>
+
+using std::filesystem::exists;
+using std::filesystem::create_directory;
+
 // shared_ptr
 #include <memory>
 #include <mutex>

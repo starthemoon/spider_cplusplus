@@ -80,5 +80,13 @@ string trim_address(const string addr) {
 }
 
 string add_img_path_prefix(string name) {
+    if (!exists(IMGPATHPREFIX)) {
+        cout << "creating path " << IMGPATHPREFIX;
+        if (!create_directory(IMGPATHPREFIX)) {
+            cerr << __FILE__ << ":" << __LINE__ << ":\tfailed to create path " << IMGPATHPREFIX;
+            exit(1);
+        }
+        cout << "finishing creating path " << IMGPATHPREFIX;
+    }
     return IMGPATHPREFIX + name;
 }
