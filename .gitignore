@@ -13,5 +13,7 @@ bin/
 obj/
 # 忽略 build
 build/
+# 忽略 learning
+learning/
 # 忽略资源文件
 imgs/

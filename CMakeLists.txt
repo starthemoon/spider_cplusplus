@@ -4,9 +4,6 @@ cmake_minimum_required(VERSION 3.10)
 # project name
 project(WebImageCrawler VERSION 0.3)
 
-# create build directory
-# file(MAKE_DIRECTORY ("../build"))
-
 # store all source files
 file(GLOB NATIVE_SRCS src/*.cpp)
 
